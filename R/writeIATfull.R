@@ -2,7 +2,7 @@
 requireNamespace("stringr")
 requireNamespace("jsonlite")
 
-writeIATstim <- function(type, combined.type="alternating", n, posside, Aside, catType, nPos, nNeg, poswords, negwords, tgtType, nA, nB, Awords, Bwords, tgtCol="black", catCol="green",write.me, out){
+writeIATstim <- function(type, combined.type="alternating", n, posside, Aside, catType, nPos, nNeg, poswords, negwords, tgtType, nA, nB, Awords, Bwords, tgtCol="black", catCol="green", norepeat=FALSE, write.me, out){
 
   ## Misspecification errors:
   if ( n %% 2 != 0 ) {stop("The number of trials per block must be even in all IAT blocks in Iatgen. This allows an equal distribution of left-hand and right-hand stimuli.")}
@@ -173,22 +173,33 @@ writeIATstim <- function(type, combined.type="alternating", n, posside, Aside, c
     finalt <- rbind(bodycats, "", bodytgts, "")
 
     ## ADD CODE TO TAKE CONTENTS FROM THESE POOLS TO FINAL STIMULI OBJECT
+    # default version randomly samples w/o replacement and randomizes order; otherwise they can be displayed without
 
-    altcode <- rbind(
-      "\t//ASSEMBLE TGTS AND CATS FOR ALTERNATING TRIAL FORMAT",
-      "\tvar half = tgts.length / 2; //SAME FOR TGTS AND CATS",
-      "\tvar cutoffs = [0, half, tgts.length];",
-      "\tstimBuilder(Astim, tgts, cutoffs[0], cutoffs[1]);",
-      "\tstimBuilder(Bstim, tgts, cutoffs[1], cutoffs[2]);",
-      "\tstimBuilder(posstim, cats,  cutoffs[0], cutoffs[1]);",
-      "\tstimBuilder(negstim, cats, cutoffs[1], cutoffs[2]);",
-      "\tshuffle(tgts);",
-      "\tshuffle(tgts);",
-      "\tshuffle(cats);",
-      "\tshuffle(cats);"
-    )
-
-    altsection <- rbind(bodycats, "", bodytgts, "", altcode, "")
+      if (norepeat==FALSE) {
+        altcode <- rbind(
+          "\t//ASSEMBLE TGTS AND CATS FOR ALTERNATING TRIAL FORMAT",
+          "\tvar half = tgts.length / 2; //SAME FOR TGTS AND CATS",
+          "\tvar cutoffs = [0, half, tgts.length];",
+          "\tstimBuilder(Astim, tgts, cutoffs[0], cutoffs[1]);",
+          "\tstimBuilder(Bstim, tgts, cutoffs[1], cutoffs[2]);",
+          "\tstimBuilder(posstim, cats,  cutoffs[0], cutoffs[1]);",
+          "\tstimBuilder(negstim, cats, cutoffs[1], cutoffs[2]);",
+          "\tshuffle(tgts);",
+          "\tshuffle(tgts);",
+          "\tshuffle(cats);",
+          "\tshuffle(cats);"
+        )
+        altsection <- rbind(bodycats, "", bodytgts, "", altcode, "")
+      } else {
+        altcode <- rbind(
+          "\t//ASSEMBLE TGTS AND CATS FOR ALTERNATING TRIAL FORMAT - WILL NOT DISPLAY REPEATS UNTIL ALL TGT/CAT STIMULI ARE SHOWN",
+          "\tvar tgtcombo = Astim.concat(Bstim);",
+          "\tvar catcombo = posstim.concat(negstim);",
+          "\tstimBuilder(tgtcombo, tgts, 0, tgts.length);",
+          "\tstimBuilder(catcombo, cats,  0, cats.length);"
+        )
+        altsection <- rbind(bodycats, "", bodytgts, "", altcode, "")
+      }
   }
 
 
@@ -228,11 +239,17 @@ writeIATstim <- function(type, combined.type="alternating", n, posside, Aside, c
     )
   }
 
-  if(type=="combined" && combined.type=="alternating"){
-    call <- "\taltStimuil();"
+
+  # The reverse is needed for 'norepeat' variants; stimuli displayer pulls from end. Doesn't impact standard variatn as it's random order anywayß
+  if(type=="combined" & combined.type=="alternating"){
+    call <- rbind(
+      "\taltStimuil();",
+      "\tstimuli.reverse();"
+    )
   }
 
-  if (type=="target"){
+
+  if (type=="target" & norepeat==FALSE){
     call <- rbind(
       "\tvar half = stimuli.length / 2;",
       "\tvar cutoffs = [0, half, stimuli.length];",
@@ -245,7 +262,16 @@ writeIATstim <- function(type, combined.type="alternating", n, posside, Aside, c
     )
   }
 
-  if (type=="category"){
+  if (type=="target" & norepeat==TRUE){
+    call <- rbind(
+      "\tvar tgtcombo = Astim.concat(Bstim);",
+      "\tstimBuilder(tgtcombo, stimuli, 0, stimuli.length);",
+      "\tstimuli.reverse();"
+    )
+  }
+
+
+   if (type=="category" & norepeat==FALSE){
     call <- rbind(
       "\tvar half = stimuli.length / 2;",
       "\tvar cutoffs = [0, half, stimuli.length];",
@@ -255,6 +281,14 @@ writeIATstim <- function(type, combined.type="alternating", n, posside, Aside, c
       "",
       "\tshuffle(stimuli);",
       "\tshuffle(stimuli);"
+    )
+   }
+
+  if (type=="category" & norepeat==TRUE){
+    call <- rbind(
+      "\tvar catcombo = posstim.concat(negstim);",
+      "\tstimBuilder(catcombo, stimuli, 0, stimuli.length);",
+      "\tstimuli.reverse();"
     )
   }
 
@@ -274,7 +308,7 @@ writeIATstim <- function(type, combined.type="alternating", n, posside, Aside, c
 
 writeIATjs <- function(type, combined.type="alternating", n, posside, Aside, catType, catCol="green", nPos, nNeg,
                        poswords, negwords, tgtType, tgtCol="black", nA, nB, Awords, Bwords,
-                       pause=250, errorpause=300, correct.error=F, note=F,
+                       pause=250, errorpause=300, correct.error=F, note=F, norepeat=FALSE,
                        imgs, out) {
 
   apath  <- system.file("codefiles", "codeA.txt", package="iatgen")
@@ -295,7 +329,7 @@ writeIATjs <- function(type, combined.type="alternating", n, posside, Aside, cat
 
   bpath  <- system.file("codefiles", "codeB.txt", package="iatgen")
   codeB <- as.matrix(readLines(bpath, warn=F))
-  codestim <- writeIATstim(type=type, combined.type=combined.type, n=n, catType=catType, catCol=catCol, nPos=nPos, nNeg=nNeg, poswords=poswords, negwords=negwords, posside=posside, tgtType=tgtType, tgtCol=tgtCol, nA=nA, nB=nB, Awords=Awords, Bwords=Bwords, Aside=Aside, write.me=FALSE)
+  codestim <- writeIATstim(type=type, combined.type=combined.type, n=n, catType=catType, catCol=catCol, nPos=nPos, nNeg=nNeg, poswords=poswords, negwords=negwords, posside=posside, tgtType=tgtType, tgtCol=tgtCol, nA=nA, nB=nB, Awords=Awords, Bwords=Bwords, Aside=Aside, norepeat=norepeat, write.me=FALSE)
   cpath  <- system.file("codefiles", "codeC.txt", package="iatgen")
   codeC <- as.matrix(readLines(cpath, warn=F))
   temp <- rbind(codeA, codeimage, codeB, codestim, codeC)
@@ -353,7 +387,7 @@ writeIATjs <- function(type, combined.type="alternating", n, posside, Aside, cat
 
 writeIATblocks <- function(startqid=1, combined.type="alternating", foldernum=1, posname, negname, Aname, Bname, posstart, Astart, IATname="IAT", n=c(20, 20, 20, 40, 40, 20, 40),
                            catType, catCol="green", poswords, negwords, nPos, nNeg, posimgs, negimgs, tgtType, tgtCol="black", nA, nB, Awords, Bwords, Aimgs, Bimgs,
-                           easy.img=F, pause=250, errorpause=300, correct.error=F, note=F, imgs
+                           easy.img=F, pause=250, errorpause=300, correct.error=F, note=F, norepeat=FALSE, imgs
                            ) {
 
 
@@ -448,6 +482,7 @@ writeIATblocks <- function(startqid=1, combined.type="alternating", foldernum=1,
              note=note,
              errorpause=errorpause,
              correct.error=correct.error,
+             norepeat=norepeat,
              out = paste("Q",qids[1], " JavaScript_1.txt",sep=""))
 
   writeIATjs(type = "category",
@@ -472,6 +507,7 @@ writeIATblocks <- function(startqid=1, combined.type="alternating", foldernum=1,
              note=note,
              errorpause=errorpause,
              correct.error=correct.error,
+             norepeat=norepeat,
              out = paste("Q",qids[2], " JavaScript_2.txt",sep=""))
 
   writeIATjs(type = "combined",
@@ -496,6 +532,7 @@ writeIATblocks <- function(startqid=1, combined.type="alternating", foldernum=1,
              note=note,
              errorpause=errorpause,
              correct.error=correct.error,
+             norepeat=norepeat,
              out = paste("Q",qids[3], " JavaScript_3.txt",sep=""))
 
   writeIATjs(type = "combined",
@@ -520,6 +557,7 @@ writeIATblocks <- function(startqid=1, combined.type="alternating", foldernum=1,
              note=note,
              errorpause=errorpause,
              correct.error=correct.error,
+             norepeat=norepeat,
              out = paste("Q",qids[4], " JavaScript_4.txt",sep=""))
 
   writeIATjs(type = "category",
@@ -544,6 +582,7 @@ writeIATblocks <- function(startqid=1, combined.type="alternating", foldernum=1,
              note=note,
              errorpause=errorpause,
              correct.error=correct.error,
+             norepeat=norepeat,
              out = paste("Q",qids[5], " JavaScript_5.txt",sep=""))
 
   writeIATjs(type = "combined",
@@ -568,6 +607,7 @@ writeIATblocks <- function(startqid=1, combined.type="alternating", foldernum=1,
              note=note,
              errorpause=errorpause,
              correct.error=correct.error,
+             norepeat=norepeat,
              out = paste("Q",qids[6], " JavaScript_6.txt",sep=""))
 
   writeIATjs(type = "combined",
@@ -592,6 +632,7 @@ writeIATblocks <- function(startqid=1, combined.type="alternating", foldernum=1,
              note=note,
              errorpause=errorpause,
              correct.error=correct.error,
+             norepeat=norepeat,
              out = paste("Q",qids[7], " JavaScript_7.txt",sep=""))
 
   ### change the html text
@@ -740,6 +781,7 @@ writeIATblocks <- function(startqid=1, combined.type="alternating", foldernum=1,
 #' @param errorpause (Required if \code{correct.error=TRUE}). This sets the amount of time in milliseconds to display the red X in case of an error. By default, set to 300 ms (Greenwald et al., 1998) but can be set to any value. Ignored if \code{correct.error=T}.
 #' @param correct.error (Required, set by default). Logical value, set to \code{TRUE} by default. When \code{correct.error=TRUE}, creates a variant where participants must correct errors in order to proceed from one trial to the next (see Greenwald et al., 2003). When \code{correct.error=FALSE}, the IAT follows the original Greenwald et al. (1998) procedure in which an error message flashes on the screen between trials. Note that forced error correction is the default in most modern IAT software.
 #' @param note (Required, set by default). Logical value, set to \code{FALSE} by default. When \code{note=TRUE}, displays a persistent note at the bottom of the window reminding participants which keys to press and how to handle errors (if \code{correct.error=TRUE}). This is recommended for non-laboratory use, where participants are unable to ask for assistance.
+#' @param norepeat (Required, set by default). Logical value, set to \code{FALSE} by default. This controls the order in which stimuli are displayed. In the IAT, we always sample stimuli randomly without replacement from pools, replenishing the pools after they are depleted. However, iatgen then randomizes (within each block) the order in which those stimuli are displayed (e.g., Gawronski, 2002). Setting this to \code{TRUE} displays stimuli in the order sampled, meaning that there are no repeats seen *by the participant* until all stimuli from that stimuli set have been seen.
 #' @param startqid (Required, set by default). Numeric value that impacts how files are named, which is only visible to users in manual mode. Although this does not substantively impact the IAT, it can make building multi-IAT studies easier in manual mode (see tutorial at www.iatgen.wordpress.com). By default, \code{startqid=1}, which means that iatgen creates files named Q1 through Q28, which are intended to be pasted into Q1 through Q28 of a Qualtrics survey. If a user is starting an IAT on a different question number (e.g., adding a second IAT, which starts on Q29 and ends on adding an additional IAT (e.g., as in the multi-IAT templates on www.iatgen.wordpress.com), then (for convenience) the user should set \code{startqid} to the lowest question number for the new IAT. For example, if a user wished to add an a second IAT to Q29 through Q56, the user would set \code{startqid=29}. The software will then clearly label the files Q29 through Q56 so it is clear where to add the code to the survey. This is intended only for advanced users and users building multi-IAT studies (see www.iatgen.wordpress.com for more information).
 #' @return Nothing is returned. However, a QSF file (if \code{qsf=T}) or folders (if \code{qsf=F}) are made in the working directory containing both HTML and JavaScript files that are to be pasted into Qualtrics.
 #' @seealso See www.iatgen.wordpress.com for tutorials and files.
@@ -932,6 +974,31 @@ writeIATblocks <- function(startqid=1, combined.type="alternating", foldernum=1,
 #'             catCol="green"
 #')
 #'
+#' ### EXAMPLE IAT USING 'norepeat=TRUE" TO SUPPRESS REPEAT STIMULI UNTIL ALL STIMULI FROM THAT CATEGORY HAVE BEEN SEEN
+#'
+#'#'writeIATfull(IATname="flowins",
+#'             posname="Pleasant",
+#'             negname="Unpleasant",
+#'             Aname="Flowers",
+#'             Bname="Insects",
+#'             catType="words",
+#'             poswords = c("Gentle", "Enjoy", "Heaven", "Cheer", "Happy", "Love", "Friend"),
+#'             negwords = c("Poison", "Evil", "Gloom", "Damage", "Vomit", "Ugly", "Hurt"),
+#'             tgtType="words",
+#'             Awords = c("Orchid", "Tulip", "Rose", "Daffodil", "Daisy", "Lilac", "Lily"),
+#'             Bwords = c("Wasp", "Flea", "Roach", "Centipede", "Moth", "Bedbug", "Gnat"),
+#'
+#'             #advanced options
+#'             n=c(20, 20, 20, 40, 40, 20, 40),
+#'             qsf=T,
+#'             note=F,
+#'             correct.error=F,
+#'             pause=250,
+#'             errorpause=300,
+#'             tgtCol="black",
+#'             catCol="green",
+#'             norepeat=TRUE
+#')
 #' }
 writeIATfull <- function(IATname="IAT",
                          posname,
@@ -956,6 +1023,7 @@ writeIATfull <- function(IATname="IAT",
                          errorpause=300,
                          correct.error=TRUE,
                          note=FALSE,
+                         norepeat=FALSE,
                          startqid = 1
 ) {
 
@@ -1027,25 +1095,25 @@ writeIATfull <- function(IATname="IAT",
                    posname = posname, negname = negname, Aname = Aname, Bname = Bname,
                    catType = catType, catCol=catCol, poswords = poswords, negwords = negwords, nPos = nPos, nNeg = nNeg,
                    tgtType = tgtType, tgtCol=tgtCol, Awords = Awords, Bwords = Bwords, nA = nA, nB = nB,
-                   pause=pause, errorpause=errorpause, correct.error=correct.error, combined.type=combined.type, note=note, imgs = imgs)
+                   pause=pause, errorpause=errorpause, correct.error=correct.error, combined.type=combined.type, norepeat=norepeat, note=note, imgs = imgs)
 
     writeIATblocks(startqid=(startqid+7), posstart="left", Astart="right", IATname=IATname, foldernum=2, n=n,
                    posname = posname, negname = negname, Aname = Aname, Bname = Bname,
                    catType = catType, catCol=catCol, poswords = poswords, negwords = negwords, nPos = nPos, nNeg = nNeg,
                    tgtType = tgtType, tgtCol=tgtCol, Awords = Awords, Bwords = Bwords, nA = nA, nB = nB,
-                   pause=pause, errorpause=errorpause, correct.error=correct.error, combined.type=combined.type, note=note, imgs = imgs)
+                   pause=pause, errorpause=errorpause, correct.error=correct.error, combined.type=combined.type, norepeat=norepeat, note=note, imgs = imgs)
 
     writeIATblocks(startqid=(startqid+14), posstart="left", Astart="left", IATname=IATname, foldernum=3, n=n,
                    posname = posname, negname = negname, Aname = Aname, Bname = Bname,
                    catType = catType, catCol=catCol, poswords = poswords, negwords = negwords, nPos = nPos, nNeg = nNeg,
                    tgtType = tgtType, tgtCol=tgtCol, Awords = Awords, Bwords = Bwords, nA = nA, nB = nB,
-                   pause=pause, errorpause=errorpause, correct.error=correct.error, combined.type=combined.type, note=note, imgs = imgs)
+                   pause=pause, errorpause=errorpause, correct.error=correct.error, combined.type=combined.type, norepeat=norepeat, note=note, imgs = imgs)
 
     writeIATblocks(startqid=(startqid+21), posstart="right", Astart="left", IATname=IATname, foldernum=4, n=n,
                    posname = posname, negname = negname, Aname = Aname, Bname = Bname,
                    catType = catType, catCol=catCol, poswords = poswords, negwords = negwords, nPos = nPos, nNeg = nNeg,
                    tgtType = tgtType, tgtCol=tgtCol, Awords = Awords, Bwords = Bwords, nA = nA, nB = nB,
-                   pause=pause, errorpause=errorpause, correct.error=correct.error, combined.type=combined.type, note=note, imgs = imgs)
+                   pause=pause, errorpause=errorpause, correct.error=correct.error, combined.type=combined.type, norepeat=norepeat, note=note, imgs = imgs)
 
 
 
